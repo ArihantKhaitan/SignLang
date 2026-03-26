@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
-import { Hand, Activity, BookOpen, Type, Camera, Brain, Menu, X } from 'lucide-react';
+import { Hand, Menu, X } from 'lucide-react';
+import HeroBackground from './components/HeroBackground';
 import Dashboard     from './pages/Dashboard';
 import Interpreter   from './pages/Interpreter';
 import Learn         from './pages/Learn';
@@ -129,16 +130,21 @@ function Layout() {
   const isHome = pathname === '/';
 
   return (
-    <div style={{ minHeight:'100vh', background:'var(--void)', color:'#fff' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--void)', color: '#fff', position: 'relative' }}>
+      {/* Fixed cosmic background — always visible on home */}
+      {isHome && <HeroBackground />}
       <Nav />
-      <main style={isHome ? {} : { paddingTop:'80px', maxWidth:'1280px', margin:'0 auto', padding:'96px 24px 48px' }}>
+      <main style={isHome
+        ? { position: 'relative', zIndex: 1 }
+        : { paddingTop: '80px', maxWidth: '1280px', margin: '0 auto', padding: '96px 24px 48px' }
+      }>
         <Routes>
-          <Route path="/"         element={<Dashboard />} />
+          <Route path="/"          element={<Dashboard />} />
           <Route path="/interpret" element={<Interpreter />} />
-          <Route path="/learn"    element={<Learn />} />
-          <Route path="/sign"     element={<SignPlayer />} />
-          <Route path="/collect"  element={<DataCollection />} />
-          <Route path="/train"    element={<Training />} />
+          <Route path="/learn"     element={<Learn />} />
+          <Route path="/sign"      element={<SignPlayer />} />
+          <Route path="/collect"   element={<DataCollection />} />
+          <Route path="/train"     element={<Training />} />
         </Routes>
       </main>
     </div>

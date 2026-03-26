@@ -86,11 +86,13 @@ body {
   .collect-grid { grid-template-columns: 1fr !important; }
 }
 
-.interpreter-inner {
+/* Interpreter two-column: camera | panel */
+.interp-grid {
   display: grid;
-  grid-template-columns: minmax(0,3fr) minmax(0,2fr);
+  grid-template-columns: 1fr 360px;
   gap: 20px;
+  align-items: start;
 }
 @media (max-width: 900px) {
-  .interpreter-inner { grid-template-columns: 1fr !important; }
+  .interp-grid { grid-template-columns: 1fr !important; }
 }
