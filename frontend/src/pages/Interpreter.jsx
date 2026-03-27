@@ -3,10 +3,11 @@ import { Volume2, VolumeX, Trash2, Delete, Info, VideoOff, Video } from 'lucide-
 
 const glass = {
   background: 'rgba(255,255,255,0.04)',
+  backdropFilter: 'blur(24px) saturate(180%)',
+  WebkitBackdropFilter: 'blur(24px) saturate(180%)',
   border: '1px solid rgba(255,255,255,0.08)',
-  backdropFilter: 'blur(24px)',
-  WebkitBackdropFilter: 'blur(24px)',
-  borderRadius: '16px',
+  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 32px rgba(0,0,0,0.4)',
+  borderRadius: '18px',
 };
 
 /* Circular hold-progress arc */
@@ -72,10 +73,7 @@ export default function Interpreter() {
     <div>
       {/* Page header */}
       <div style={{ marginBottom: 28 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-          <div style={{ width: 22, height: 1, background: '#7c3aed' }} />
-          <span style={{ fontSize: '0.68rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: '#7c3aed' }}>Live Recognition</span>
-        </div>
+        <span style={{ fontSize: '0.65rem', letterSpacing: '0.22em', textTransform: 'uppercase', color: 'rgba(124,58,237,0.8)', display: 'block', marginBottom: 6 }}>Live Recognition</span>
         <h1 style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(2.4rem,5vw,3.5rem)', lineHeight: 1, margin: 0 }}>
           INTERPRETER
         </h1>

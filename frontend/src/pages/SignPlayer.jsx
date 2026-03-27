@@ -3,9 +3,10 @@ import { Play, Pause, RotateCcw, Volume2 } from 'lucide-react';
 
 const glass = {
   background: 'rgba(255,255,255,0.04)',
-  border: '1px solid rgba(255,255,255,0.07)',
-  backdropFilter: 'blur(24px)',
-  WebkitBackdropFilter: 'blur(24px)',
+  backdropFilter: 'blur(24px) saturate(180%)',
+  WebkitBackdropFilter: 'blur(24px) saturate(180%)',
+  border: '1px solid rgba(255,255,255,0.08)',
+  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 32px rgba(0,0,0,0.4)',
   borderRadius: '20px',
 };
 
@@ -103,12 +104,9 @@ export default function SignPlayer() {
     <div style={{ maxWidth:'720px', margin:'0 auto' }}>
       {/* Header */}
       <div style={{ marginBottom:'32px' }}>
-        <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'6px' }}>
-          <div style={{ width:'24px', height:'1px', background:'#8b5cf6' }} />
-          <span style={{ fontSize:'0.7rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'#8b5cf6' }}>Text to Signs</span>
-        </div>
+        <span style={{ fontSize:'0.65rem', letterSpacing:'0.22em', textTransform:'uppercase', color:'rgba(139,92,246,0.85)', display:'block', marginBottom:'6px' }}>Text to Signs</span>
         <h1 className="display" style={{ fontSize:'clamp(2.5rem,6vw,4rem)' }}>SIGN PLAYER</h1>
-        <p style={{ color:'rgba(255,255,255,0.4)', fontSize:'0.9rem', marginTop:'6px', fontFamily:"'Space Grotesk',sans-serif" }}>Type text and watch it fingerspelled in ASL — letter by letter.</p>
+        <p style={{ color:'rgba(255,255,255,0.35)', fontSize:'0.88rem', marginTop:'8px', fontFamily:"'Space Grotesk',sans-serif" }}>Type text and watch it fingerspelled in ASL — letter by letter.</p>
       </div>
 
       {/* Input */}

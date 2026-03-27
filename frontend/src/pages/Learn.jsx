@@ -78,15 +78,20 @@ function LetterCard({ letter, data, onClick }) {
     <button onClick={() => onClick(letter)} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
       style={{
         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
-        padding: 16, borderRadius: 16, cursor: 'pointer', border: 'none',
-        background: hov ? 'rgba(124,58,237,0.12)' : 'rgba(255,255,255,0.03)',
-        border: `1px solid ${hov ? 'rgba(124,58,237,0.4)' : 'rgba(255,255,255,0.07)'}`,
-        transform: hov ? 'translateY(-3px) scale(1.02)' : 'none',
-        transition: 'all 0.2s', boxShadow: hov ? '0 12px 32px rgba(124,58,237,0.2)' : 'none',
+        padding: 16, borderRadius: 18, cursor: 'pointer',
+        background: hov ? 'rgba(124,58,237,0.1)' : 'rgba(255,255,255,0.03)',
+        backdropFilter: 'blur(20px) saturate(180%)',
+        WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+        border: `1px solid ${hov ? 'rgba(124,58,237,0.35)' : 'rgba(255,255,255,0.07)'}`,
+        boxShadow: hov
+          ? 'inset 0 1px 0 rgba(255,255,255,0.12), 0 12px 36px rgba(124,58,237,0.18)'
+          : 'inset 0 1px 0 rgba(255,255,255,0.05)',
+        transform: hov ? 'translateY(-3px)' : 'none',
+        transition: 'all 0.22s cubic-bezier(0.4,0,0.2,1)',
       }}>
       <SignImg letter={letter} size={72} />
       <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.5rem', lineHeight: 1, color: hov ? '#c4b5fd' : '#fff' }}>{letter}</span>
-      {data.similar?.length > 0 && <span style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.25)' }}>≈ {data.similar.join(' ')}</span>}
+      {data.similar?.length > 0 && <span style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.22)' }}>≈ {data.similar.join(' ')}</span>}
     </button>
   );
 }
@@ -105,9 +110,12 @@ function DetailModal({ letter, data, onClose, onPrev, onNext }) {
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(12px)', padding: 24 }}>
       <div onClick={e => e.stopPropagation()} style={{
         width: '100%', maxWidth: 420,
-        background: 'rgba(5,3,25,0.97)', border: '1px solid rgba(255,255,255,0.1)',
-        borderRadius: 24, padding: 32, position: 'relative',
-        boxShadow: '0 40px 100px rgba(0,0,0,0.8)',
+        background: 'rgba(8,4,30,0.92)',
+        backdropFilter: 'blur(40px) saturate(180%)',
+        WebkitBackdropFilter: 'blur(40px) saturate(180%)',
+        border: '1px solid rgba(255,255,255,0.1)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.1), 0 40px 100px rgba(0,0,0,0.85)',
+        borderRadius: 26, padding: 32, position: 'relative',
       }}>
         {/* Close */}
         <button onClick={onClose} style={{ position: 'absolute', top: 16, right: 16, background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', color: 'rgba(255,255,255,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -271,27 +279,24 @@ export default function Learn() {
     <div>
       {/* Header */}
       <div style={{ marginBottom: 32 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-          <div style={{ width: 22, height: 1, background: '#06b6d4' }} />
-          <span style={{ fontSize: '0.68rem', letterSpacing: '0.22em', textTransform: 'uppercase', color: '#06b6d4' }}>Visual Dictionary</span>
-        </div>
+        <span style={{ fontSize: '0.65rem', letterSpacing: '0.22em', textTransform: 'uppercase', color: 'rgba(6,182,212,0.8)', display: 'block', marginBottom: 6 }}>Visual Dictionary</span>
         <h1 style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 'clamp(2.5rem,6vw,4rem)', margin: 0, lineHeight: 1 }}>
           LEARN ASL
         </h1>
-        <p style={{ fontFamily: "'Space Grotesk',sans-serif", color: 'rgba(255,255,255,0.4)', fontSize: '0.9rem', marginTop: 6 }}>
+        <p style={{ fontFamily: "'Space Grotesk',sans-serif", color: 'rgba(255,255,255,0.35)', fontSize: '0.88rem', marginTop: 8 }}>
           Animated reference for every letter, number, and phrase. Click any card to explore.
         </p>
       </div>
 
       {/* Tabs + search */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 28 }}>
-        <div style={{ display: 'flex', gap: 4, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: 4 }}>
+        <div style={{ display: 'flex', gap: 4, background: 'rgba(255,255,255,0.03)', backdropFilter: 'blur(20px) saturate(180%)', WebkitBackdropFilter: 'blur(20px) saturate(180%)', border: '1px solid rgba(255,255,255,0.08)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)', borderRadius: 14, padding: 4 }}>
           {[['alphabet','Alphabet'],['numbers','Numbers'],['phrases','Phrases'],['quiz','Quiz']].map(([id, lbl]) => (
             <Tab key={id} id={id} label={lbl} active={tab === id} onClick={setTab} />
           ))}
         </div>
         {tab === 'alphabet' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '8px 14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(20px) saturate(180%)', WebkitBackdropFilter: 'blur(20px) saturate(180%)', border: '1px solid rgba(255,255,255,0.08)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)', borderRadius: 10, padding: '8px 14px' }}>
             <Search size={13} style={{ color: 'rgba(255,255,255,0.3)' }} />
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search letter…"
               style={{ background: 'none', border: 'none', outline: 'none', color: '#fff', fontSize: '0.82rem', width: 120, fontFamily: "'Space Grotesk',sans-serif" }} />
@@ -316,7 +321,7 @@ export default function Learn() {
       {tab === 'numbers' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(130px,1fr))', gap: 12 }}>
           {Object.entries(NUMBERS).map(([num, data]) => (
-            <div key={num} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16, padding: 18, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+            <div key={num} style={{ background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(20px) saturate(180%)', WebkitBackdropFilter: 'blur(20px) saturate(180%)', border: '1px solid rgba(255,255,255,0.08)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 4px 20px rgba(0,0,0,0.3)', borderRadius: 18, padding: 18, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
               <SignImg letter={num} size={80} />
               <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '2rem' }}>{num}</span>
               <p style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.45)', textAlign: 'center', lineHeight: 1.5, fontFamily: "'Space Grotesk',sans-serif", margin: 0 }}>{data.desc}</p>
@@ -329,7 +334,7 @@ export default function Learn() {
       {tab === 'phrases' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 12 }}>
           {PHRASES.map(({ sign, desc, cat }) => (
-            <div key={sign} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16, padding: 20 }}>
+            <div key={sign} style={{ background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(20px) saturate(180%)', WebkitBackdropFilter: 'blur(20px) saturate(180%)', border: '1px solid rgba(255,255,255,0.08)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 4px 20px rgba(0,0,0,0.3)', borderRadius: 18, padding: 20 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
                 <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.4rem', letterSpacing: '0.04em' }}>{sign}</span>
                 <span style={{ fontSize: '0.62rem', padding: '3px 10px', borderRadius: 9999, background: 'rgba(6,182,212,0.1)', color: '#67e8f9', border: '1px solid rgba(6,182,212,0.2)' }}>{cat}</span>
