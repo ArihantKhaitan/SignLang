@@ -1,157 +1,162 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, RotateCcw, Trophy, BookOpen, Layers, X } from 'lucide-react';
-
-const glass = {
-  background: 'rgba(255,255,255,0.04)',
-  border: '1px solid rgba(255,255,255,0.07)',
-  backdropFilter: 'blur(24px)',
-  WebkitBackdropFilter: 'blur(24px)',
-  borderRadius: '16px',
-};
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { X, ChevronLeft, ChevronRight, RotateCcw, Trophy, Lightbulb, Search } from 'lucide-react';
 
 const IMG = l => `https://www.lifeprint.com/asl101/gifs-animated/${l.toLowerCase()}.gif`;
 
 const ALPHABET = {
-  A: { desc: 'Closed fist. Thumb rests against the side of the curled fingers, pointing up.', tips: 'Thumb to the side, not on top', similar: ['S','E'] },
-  B: { desc: 'Four fingers straight up and together. Thumb folded flat across the palm.', tips: 'Fingers flat and pressed together', similar: [] },
-  C: { desc: 'Curve all fingers and thumb to form a C shape.', tips: 'Rounded like the letter C', similar: ['O'] },
-  D: { desc: 'Index finger points up. Other fingers and thumb form a circle around it.', tips: 'Only index points up; rest form an O', similar: [] },
-  E: { desc: 'All four fingers bend down so fingertips rest on the top of the thumb.', tips: 'All fingertips touch the thumb', similar: ['A','S'] },
-  F: { desc: 'Index and thumb touch to form a small O. Other three fingers point straight up.', tips: 'Three fingers spread slightly upward', similar: [] },
-  G: { desc: 'Index finger and thumb both point sideways. Other fingers closed.', tips: 'Like pointing a gun sideways', similar: ['H','Q'] },
-  H: { desc: 'Index and middle fingers extend horizontally together, pointing to the side.', tips: 'Two fingers side by side pointing sideways', similar: ['G','U'] },
-  I: { desc: 'Pinky finger extends straight up. All other fingers curled into a fist.', tips: 'Only the pinky stands up', similar: ['J','Y'] },
-  J: { desc: 'Start with I (pinky up), then trace the letter J in the air.', tips: 'Motion sign — trace a J downward then hook', similar: ['I'] },
-  K: { desc: 'Index and middle fingers point up in a V. Thumb is placed between them touching the middle of the index finger.', tips: 'Thumb between index and middle', similar: ['P','V'] },
-  L: { desc: 'Index finger points straight up. Thumb extends sideways. Forms an L shape.', tips: 'Clean right angle between index and thumb', similar: [] },
-  M: { desc: 'Three fingers (index, middle, ring) fold over and rest in front of the thumb.', tips: 'Three humps = M', similar: ['N'] },
-  N: { desc: 'Index and middle fingers fold over and rest in front of the thumb.', tips: 'Two humps = N', similar: ['M'] },
-  O: { desc: 'All fingers and thumb curve to touch at their tips, forming a full O.', tips: 'All fingertips touch the thumb tip', similar: ['C'] },
-  P: { desc: 'Like K but the whole hand rotates so fingers point downward.', tips: 'K shape pointing down', similar: ['K'] },
-  Q: { desc: 'Index finger and thumb both point downward. Like G facing down.', tips: 'G shape pointing down', similar: ['G'] },
-  R: { desc: 'Index and middle fingers cross over each other, both pointing up.', tips: 'Cross your index and middle fingers', similar: [] },
-  S: { desc: 'Closed fist with the thumb wrapped across the front of all four curled fingers.', tips: 'Thumb crosses in front, unlike A', similar: ['A','E'] },
-  T: { desc: 'Thumb is tucked between the index and middle finger, visible from the front.', tips: 'Thumb peeks between index and middle', similar: [] },
-  U: { desc: 'Index and middle fingers extend straight up together. Ring and pinky folded.', tips: 'Two fingers together pointing up', similar: ['H','V'] },
-  V: { desc: 'Index and middle fingers spread open in a V (peace sign). Ring and pinky folded.', tips: 'Classic peace / victory sign', similar: ['U','K'] },
-  W: { desc: 'Index, middle, and ring fingers spread open upward. Pinky and thumb touch.', tips: 'Three fingers up and spread', similar: [] },
-  X: { desc: 'Index finger hooks or bends like a fishhook. All other fingers closed.', tips: 'Just the index finger bent', similar: [] },
-  Y: { desc: 'Thumb and pinky extend outward. Index, middle, ring fingers closed.', tips: 'Shaka / hang-loose sign', similar: ['I'] },
-  Z: { desc: 'Index finger traces a Z shape in the air.', tips: 'Motion sign — draw a Z', similar: [] },
+  A:{desc:'Closed fist, thumb rests against the side.',tips:'Thumb to the side, not on top',similar:['S','E']},
+  B:{desc:'Four fingers straight up and together, thumb folded flat across the palm.',tips:'Fingers flat and pressed together',similar:[]},
+  C:{desc:'Curve all fingers and thumb to form a C shape.',tips:'Rounded like the letter C',similar:['O']},
+  D:{desc:'Index finger points up, others and thumb form a circle.',tips:'Only index points up',similar:[]},
+  E:{desc:'All four fingers bend down so fingertips rest on the top of the thumb.',tips:'All fingertips touch the thumb',similar:['A','S']},
+  F:{desc:'Index and thumb touch to form a small O, other three fingers point straight up.',tips:'Three fingers spread upward',similar:[]},
+  G:{desc:'Index finger and thumb both point sideways, other fingers closed.',tips:'Like pointing a gun sideways',similar:['H','Q']},
+  H:{desc:'Index and middle fingers extend horizontally together, pointing to the side.',tips:'Two fingers side by side sideways',similar:['G','U']},
+  I:{desc:'Pinky finger extends straight up, all other fingers curled into a fist.',tips:'Only the pinky stands up',similar:['J','Y']},
+  J:{desc:'Start with I (pinky up), then trace a J shape in the air.',tips:'Motion sign — trace a J downward then hook',similar:['I']},
+  K:{desc:'Index and middle fingers point up in a V, thumb between them.',tips:'Thumb between index and middle',similar:['P','V']},
+  L:{desc:'Index finger points up, thumb extends sideways. Forms an L shape.',tips:'Clean right angle between index and thumb',similar:[]},
+  M:{desc:'Three fingers fold over and rest in front of the thumb.',tips:'Three humps = M',similar:['N']},
+  N:{desc:'Index and middle fingers fold over and rest in front of the thumb.',tips:'Two humps = N',similar:['M']},
+  O:{desc:'All fingers and thumb curve to touch at their tips, forming a full O.',tips:'All fingertips touch the thumb tip',similar:['C']},
+  P:{desc:'Like K but the whole hand rotates so fingers point downward.',tips:'K shape pointing down',similar:['K']},
+  Q:{desc:'Index finger and thumb both point downward, like G facing down.',tips:'G shape pointing down',similar:['G']},
+  R:{desc:'Index and middle fingers cross over each other, both pointing up.',tips:'Cross your index and middle fingers',similar:[]},
+  S:{desc:'Closed fist with thumb wrapped across the front of all four curled fingers.',tips:'Thumb crosses in front, unlike A',similar:['A','E']},
+  T:{desc:'Thumb is tucked between the index and middle finger.',tips:'Thumb peeks between index and middle',similar:[]},
+  U:{desc:'Index and middle fingers extend straight up together.',tips:'Two fingers together pointing up',similar:['H','V']},
+  V:{desc:'Index and middle fingers spread open in a V (peace sign).',tips:'Classic peace / victory sign',similar:['U','K']},
+  W:{desc:'Index, middle, and ring fingers spread open upward, pinky and thumb touch.',tips:'Three fingers up and spread',similar:[]},
+  X:{desc:'Index finger hooks or bends like a fishhook, all other fingers closed.',tips:'Just the index finger bent',similar:[]},
+  Y:{desc:'Thumb and pinky extend outward, index, middle, ring fingers closed.',tips:'Shaka / hang-loose sign',similar:['I']},
+  Z:{desc:'Index finger traces a Z shape in the air.',tips:'Motion sign — draw a Z',similar:[]},
 };
 
 const NUMBERS = {
-  '0': { desc: 'All fingers and thumb curve together to form a round O shape.', tips: 'Like the letter O' },
-  '1': { desc: 'Index finger points straight up. All other fingers and thumb closed.', tips: 'Classic "one"' },
-  '2': { desc: 'Index and middle fingers point up in a V. Thumb and other fingers closed.', tips: 'Like the letter V / peace' },
-  '3': { desc: 'Index, middle, and thumb extended. Ring and pinky folded.', tips: 'Three fingers out' },
-  '4': { desc: 'Four fingers straight up together, thumb folded across palm.', tips: 'Like B but four fingers' },
-  '5': { desc: 'All five fingers spread open wide.', tips: 'Open hand, fingers spread' },
-  '6': { desc: 'Pinky and thumb touch. Other three fingers point up.', tips: 'Combo of W + touch' },
-  '7': { desc: 'Ring finger and thumb touch. Other fingers point up.', tips: 'Ring + thumb' },
-  '8': { desc: 'Middle finger and thumb touch. Other fingers point up.', tips: 'Middle + thumb' },
-  '9': { desc: 'Index and thumb form a small circle. Other fingers point up.', tips: 'Like F / the number 9' },
+  '1':{desc:'Index finger points straight up, all others closed.',tips:'Classic one'},
+  '2':{desc:'Index and middle fingers point up in a V.',tips:'Like V / peace'},
+  '3':{desc:'Index, middle, and thumb extended.',tips:'Three fingers out'},
+  '4':{desc:'Four fingers straight up, thumb folded.',tips:'Like B but four fingers'},
+  '5':{desc:'All five fingers spread open wide.',tips:'Open hand, spread'},
+  '6':{desc:'Pinky and thumb touch, other three fingers point up.',tips:'Pinky + thumb'},
+  '7':{desc:'Ring finger and thumb touch, other fingers point up.',tips:'Ring + thumb'},
+  '8':{desc:'Middle finger and thumb touch, other fingers point up.',tips:'Middle + thumb'},
+  '9':{desc:'Index and thumb form a small circle, others point up.',tips:'Like F'},
+  '10':{desc:'Thumb up, shake wrist side to side.',tips:'Fist with thumb up, wag it'},
 };
 
 const PHRASES = [
-  { sign: 'Hello', desc: 'Open hand, fingers together, palm forward. Move hand away from forehead like a salute.', category: 'Greetings' },
-  { sign: 'Thank You', desc: 'Flat hand starts at chin, fingers touching lips, then moves forward and down.', category: 'Greetings' },
-  { sign: 'Please', desc: 'Flat hand on chest, rub in a circular motion.', category: 'Polite' },
-  { sign: 'Sorry', desc: 'Fist on chest, move in a circular motion.', category: 'Polite' },
-  { sign: 'Yes', desc: 'Fist nods up and down like a head nodding yes.', category: 'Responses' },
-  { sign: 'No', desc: 'Index and middle fingers quickly close to thumb twice.', category: 'Responses' },
-  { sign: 'Help', desc: 'Thumb up (A hand) on flat palm, move both hands upward together.', category: 'Essential' },
-  { sign: 'Stop', desc: 'Flat hand chops down onto the palm of the other flat hand.', category: 'Essential' },
-  { sign: 'More', desc: 'Both hands form flat O shapes, tap fingertips together twice.', category: 'Essential' },
-  { sign: 'Good', desc: 'Flat hand starts at mouth, then moves outward and downward.', category: 'Emotions' },
-  { sign: 'Bad', desc: 'Flat hand at mouth, then flips outward and downward with palm facing down.', category: 'Emotions' },
-  { sign: 'Love', desc: 'Cross arms over chest like a hug.', category: 'Emotions' },
-  { sign: 'Water', desc: 'W hand (3 fingers up) taps chin twice.', category: 'Everyday' },
-  { sign: 'Eat / Food', desc: 'Flat O hand taps mouth twice.', category: 'Everyday' },
-  { sign: 'Where', desc: 'Index finger points and waves side to side.', category: 'Questions' },
-  { sign: 'What', desc: 'Index finger brushes across fingers of the other hand.', category: 'Questions' },
-  { sign: 'Who', desc: 'L hand at chin, middle finger taps chin.', category: 'Questions' },
+  {sign:'Hello',desc:'Open hand, palm forward, move away from forehead like a salute.',cat:'Greetings'},
+  {sign:'Thank You',desc:'Flat hand at chin, fingers touching lips, moves forward and down.',cat:'Greetings'},
+  {sign:'Please',desc:'Flat hand on chest, rub in a circular motion.',cat:'Polite'},
+  {sign:'Sorry',desc:'Fist on chest, move in a circular motion.',cat:'Polite'},
+  {sign:'Yes',desc:'Fist nods up and down like a head nodding yes.',cat:'Responses'},
+  {sign:'No',desc:'Index and middle fingers quickly close to thumb twice.',cat:'Responses'},
+  {sign:'Help',desc:'Thumb up (A hand) on flat palm, move both hands upward.',cat:'Essential'},
+  {sign:'Stop',desc:'Flat hand chops down onto the palm of the other flat hand.',cat:'Essential'},
+  {sign:'Good',desc:'Flat hand starts at mouth, moves outward and downward.',cat:'Emotions'},
+  {sign:'Love',desc:'Cross arms over chest like a hug.',cat:'Emotions'},
+  {sign:'Water',desc:'W hand (3 fingers up) taps chin twice.',cat:'Everyday'},
+  {sign:'Where',desc:'Index finger points and waves side to side.',cat:'Questions'},
 ];
 
-function SignImage({ letter, size = 'md' }) {
+/* ── Sign image with fallback letter ───────────────────────────────── */
+function SignImg({ letter, size = 80 }) {
   const [err, setErr] = useState(false);
-  const dim = size === 'lg' ? 140 : 72;
   if (err) return (
-    <div style={{ width:dim, height:dim, background:'rgba(124,58,237,0.1)', borderRadius:'10px', display:'flex', alignItems:'center', justifyContent:'center' }}>
-      <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize: size==='lg'?'3rem':'1.8rem', color:'#a78bfa' }}>{letter}</span>
+    <div style={{ width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(124,58,237,0.1)', borderRadius: 12 }}>
+      <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: size * 0.55, color: '#a78bfa' }}>{letter}</span>
     </div>
   );
-  return (
-    <img src={IMG(letter)} alt={`ASL ${letter}`}
-      style={{ width:dim, height:dim, objectFit:'contain', borderRadius:'10px', background:'#fff', display:'block' }}
-      onError={() => setErr(true)} />
-  );
+  return <img src={IMG(letter)} alt={`ASL ${letter}`} style={{ width: size, height: size, objectFit: 'contain', borderRadius: 12, background: '#fff', display: 'block' }} onError={() => setErr(true)} />;
 }
 
+/* ── Alphabet card ─────────────────────────────────────────────────── */
 function LetterCard({ letter, data, onClick }) {
   const [hov, setHov] = useState(false);
   return (
-    <button onClick={() => onClick(letter)}
-      onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+    <button onClick={() => onClick(letter)} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
       style={{
-        ...glass,
-        padding:'14px 8px', display:'flex', flexDirection:'column', alignItems:'center', gap:'8px',
-        cursor:'pointer', background: hov ? 'rgba(124,58,237,0.1)' : 'rgba(255,255,255,0.04)',
-        border: hov ? '1px solid rgba(124,58,237,0.35)' : '1px solid rgba(255,255,255,0.07)',
-        transform: hov ? 'translateY(-2px)' : 'none',
-        transition:'all 0.18s', boxShadow: hov ? '0 8px 24px rgba(124,58,237,0.15)' : 'none',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
+        padding: 16, borderRadius: 16, cursor: 'pointer', border: 'none',
+        background: hov ? 'rgba(124,58,237,0.12)' : 'rgba(255,255,255,0.03)',
+        border: `1px solid ${hov ? 'rgba(124,58,237,0.4)' : 'rgba(255,255,255,0.07)'}`,
+        transform: hov ? 'translateY(-3px) scale(1.02)' : 'none',
+        transition: 'all 0.2s', boxShadow: hov ? '0 12px 32px rgba(124,58,237,0.2)' : 'none',
       }}>
-      <SignImage letter={letter} size="md" />
-      <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:'1.4rem', letterSpacing:'0.05em' }}>{letter}</span>
-      {data.similar?.length > 0 && (
-        <span style={{ fontSize:'0.62rem', color:'rgba(255,255,255,0.25)' }}>cf. {data.similar.join(', ')}</span>
-      )}
+      <SignImg letter={letter} size={72} />
+      <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.5rem', lineHeight: 1, color: hov ? '#c4b5fd' : '#fff' }}>{letter}</span>
+      {data.similar?.length > 0 && <span style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.25)' }}>≈ {data.similar.join(' ')}</span>}
     </button>
   );
 }
 
+/* ── Detail modal ──────────────────────────────────────────────────── */
 function DetailModal({ letter, data, onClose, onPrev, onNext }) {
-  if (!letter) return null;
   const letters = Object.keys(ALPHABET);
   const idx = letters.indexOf(letter);
+  useEffect(() => {
+    const fn = e => { if (e.key === 'Escape') onClose(); if (e.key === 'ArrowLeft' && idx > 0) onPrev(); if (e.key === 'ArrowRight' && idx < letters.length - 1) onNext(); };
+    window.addEventListener('keydown', fn);
+    return () => window.removeEventListener('keydown', fn);
+  }, [idx]);
+
   return (
-    <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:200, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,0.75)', backdropFilter:'blur(8px)', padding:'16px' }}>
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(12px)', padding: 24 }}>
       <div onClick={e => e.stopPropagation()} style={{
-        ...glass, padding:'32px', maxWidth:'440px', width:'100%',
-        background:'rgba(5,2,32,0.9)', borderRadius:'24px', boxShadow:'0 24px 80px rgba(0,0,0,0.7)',
-        position:'relative',
+        width: '100%', maxWidth: 420,
+        background: 'rgba(5,3,25,0.97)', border: '1px solid rgba(255,255,255,0.1)',
+        borderRadius: 24, padding: 32, position: 'relative',
+        boxShadow: '0 40px 100px rgba(0,0,0,0.8)',
       }}>
-        <button onClick={onClose} style={{ position:'absolute', top:16, right:16, background:'rgba(255,255,255,0.06)', border:'none', borderRadius:'8px', width:32, height:32, cursor:'pointer', color:'rgba(255,255,255,0.5)', display:'flex', alignItems:'center', justifyContent:'center' }}>
-          <X size={14}/>
+        {/* Close */}
+        <button onClick={onClose} style={{ position: 'absolute', top: 16, right: 16, background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', color: 'rgba(255,255,255,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <X size={14} />
         </button>
-        <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:'20px' }}>
+
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
           <div>
-            <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:'4rem', lineHeight:1, filter:'drop-shadow(0 0 20px rgba(124,58,237,0.5))' }}>{letter}</span>
-            <p style={{ fontSize:'0.72rem', color:'rgba(255,255,255,0.3)', marginTop:'4px' }}>Letter {idx+1} of {letters.length}</p>
+            <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '4.5rem', lineHeight: 1, filter: 'drop-shadow(0 0 20px rgba(124,58,237,0.5))' }}>{letter}</div>
+            <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.3)', marginTop: 4, letterSpacing: '0.1em' }}>
+              {idx + 1} of {letters.length}
+            </div>
           </div>
-          <SignImage letter={letter} size="lg" />
+          <SignImg letter={letter} size={120} />
         </div>
-        <p style={{ color:'rgba(255,255,255,0.65)', fontSize:'0.9rem', lineHeight:1.7, marginBottom:'14px' }}>{data.desc}</p>
+
+        {/* Description */}
+        <p style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: '0.9rem', color: 'rgba(255,255,255,0.65)', lineHeight: 1.7, marginBottom: 16 }}>
+          {data.desc}
+        </p>
+
+        {/* Tip */}
         {data.tips && (
-          <div style={{ background:'rgba(124,58,237,0.12)', border:'1px solid rgba(124,58,237,0.25)', borderRadius:'10px', padding:'12px 16px', fontSize:'0.85rem', color:'#c4b5fd', marginBottom:'12px' }}>
-            💡 {data.tips}
+          <div style={{ display: 'flex', gap: 10, padding: '12px 16px', borderRadius: 12, background: 'rgba(124,58,237,0.1)', border: '1px solid rgba(124,58,237,0.25)', marginBottom: 12 }}>
+            <Lightbulb size={15} style={{ color: '#a78bfa', flexShrink: 0, marginTop: 1 }} />
+            <span style={{ fontSize: '0.84rem', color: '#c4b5fd', lineHeight: 1.6 }}>{data.tips}</span>
           </div>
         )}
-        {data.similar?.length>0 && (
-          <p style={{ fontSize:'0.75rem', color:'rgba(255,255,255,0.3)' }}>Often confused with: {data.similar.join(', ')}</p>
+        {data.similar?.length > 0 && (
+          <p style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.3)', marginBottom: 20 }}>Often confused with: <strong style={{ color: 'rgba(255,255,255,0.5)' }}>{data.similar.join(', ')}</strong></p>
         )}
-        <div style={{ display:'flex', gap:'10px', marginTop:'20px' }}>
+
+        {/* Navigation */}
+        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
           {[
-            { label:<><ChevronLeft size={14}/> Prev</>, fn:onPrev, disabled:idx===0 },
-            { label:'Close', fn:onClose, disabled:false },
-            { label:<>Next <ChevronRight size={14}/></>, fn:onNext, disabled:idx===letters.length-1 },
-          ].map(({ label, fn, disabled }, i) => (
-            <button key={i} onClick={fn} disabled={disabled} style={{
-              flex:1, padding:'10px', borderRadius:'10px', border:'none', cursor:disabled?'default':'pointer',
-              background:'rgba(255,255,255,0.06)', color: disabled?'rgba(255,255,255,0.2)':'rgba(255,255,255,0.7)',
-              fontSize:'0.8rem', display:'flex', alignItems:'center', justifyContent:'center', gap:'4px',
-              transition:'background 0.15s',
-            }}>{label}</button>
+            { label: <><ChevronLeft size={14} /> Prev</>, fn: onPrev, dis: idx === 0 },
+            { label: 'Close', fn: onClose, dis: false },
+            { label: <>Next <ChevronRight size={14} /></>, fn: onNext, dis: idx === letters.length - 1 },
+          ].map(({ label, fn, dis }, i) => (
+            <button key={i} onClick={fn} disabled={dis} style={{
+              flex: 1, padding: '10px 8px', borderRadius: 10, border: 'none', cursor: dis ? 'default' : 'pointer',
+              background: 'rgba(255,255,255,0.06)', color: dis ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.7)',
+              fontSize: '0.78rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+              transition: 'background 0.15s',
+            }}
+              onMouseEnter={e => { if (!dis) e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
+            >{label}</button>
           ))}
         </div>
       </div>
@@ -159,78 +164,77 @@ function DetailModal({ letter, data, onClose, onPrev, onNext }) {
   );
 }
 
-const QUIZ_SIZE = 10;
-function shuffle(arr) { return [...arr].sort(() => Math.random()-0.5); }
-function makeQuestion(letters) {
-  const correct = letters[Math.floor(Math.random()*letters.length)];
-  const distractors = shuffle(letters.filter(l=>l!==correct)).slice(0,3);
-  return { correct, choices: shuffle([correct,...distractors]) };
+/* ── Quiz ──────────────────────────────────────────────────────────── */
+function shuffle(a) { return [...a].sort(() => Math.random() - 0.5); }
+function makeQ(letters) {
+  const correct = letters[Math.floor(Math.random() * letters.length)];
+  const choices = shuffle([correct, ...shuffle(letters.filter(l => l !== correct)).slice(0, 3)]);
+  return { correct, choices };
 }
 
 function Quiz() {
   const letters = Object.keys(ALPHABET);
-  const [questions] = useState(() => Array.from({ length:QUIZ_SIZE }, ()=>makeQuestion(letters)));
-  const [qIdx, setQIdx] = useState(0);
-  const [selected, setSel] = useState(null);
+  const [qs] = useState(() => Array.from({ length: 10 }, () => makeQ(letters)));
+  const [qi, setQi] = useState(0);
+  const [sel, setSel] = useState(null);
   const [score, setScore] = useState(0);
   const [done, setDone] = useState(false);
-  const q = questions[qIdx];
 
-  const answer = useCallback((choice) => {
-    if (selected) return;
-    setSel(choice);
-    if (choice===q.correct) setScore(s=>s+1);
+  const answer = useCallback(ch => {
+    if (sel) return;
+    setSel(ch);
+    if (ch === qs[qi].correct) setScore(s => s + 1);
     setTimeout(() => {
-      if (qIdx+1>=QUIZ_SIZE) setDone(true);
-      else { setQIdx(i=>i+1); setSel(null); }
-    }, 900);
-  }, [selected, q, qIdx]);
+      if (qi + 1 >= 10) setDone(true);
+      else { setQi(i => i + 1); setSel(null); }
+    }, 800);
+  }, [sel, qi, qs]);
 
-  const restart = () => { setQIdx(0); setSel(null); setScore(0); setDone(false); };
+  if (done) return (
+    <div style={{ maxWidth: 380, margin: '0 auto', textAlign: 'center', padding: '60px 0' }}>
+      <Trophy size={56} style={{ margin: '0 auto 20px', color: score >= 7 ? '#fbbf24' : 'rgba(255,255,255,0.2)' }} />
+      <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '5rem', lineHeight: 1 }}>{score}<span style={{ fontSize: '2rem', color: 'rgba(255,255,255,0.3)' }}>/10</span></div>
+      <p style={{ color: 'rgba(255,255,255,0.5)', fontFamily: "'Space Grotesk',sans-serif", marginBottom: 28 }}>
+        {score === 10 ? 'Perfect! You know your ASL alphabet!' : score >= 7 ? 'Great job! A bit more practice and you\'ve got it.' : 'Keep studying — you\'ll nail it!'}
+      </p>
+      <button onClick={() => { setQi(0); setSel(null); setScore(0); setDone(false); }} style={{
+        display: 'inline-flex', alignItems: 'center', gap: 8, padding: '12px 28px', borderRadius: 9999, cursor: 'pointer', border: 'none',
+        background: 'rgba(124,58,237,0.25)', border: '1px solid rgba(124,58,237,0.45)', color: '#c4b5fd', fontSize: '0.85rem',
+      }}>
+        <RotateCcw size={14} /> Try Again
+      </button>
+    </div>
+  );
 
-  if (done) {
-    const pct = Math.round((score/QUIZ_SIZE)*100);
-    return (
-      <div style={{ maxWidth:'360px', margin:'0 auto', textAlign:'center', padding:'48px 0' }}>
-        <Trophy size={56} style={{ margin:'0 auto 16px', color: pct>=70?'#fbbf24':'rgba(255,255,255,0.2)' }} />
-        <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:'4rem' }}>{score}/{QUIZ_SIZE}</div>
-        <p style={{ color:'rgba(255,255,255,0.5)', marginBottom:'24px' }}>
-          {pct===100?'Perfect! You know your ASL alphabet!':pct>=70?'Great job! Keep practising.':"Keep studying — you'll get there!"}
-        </p>
-        <button onClick={restart} style={{ display:'inline-flex', alignItems:'center', gap:'8px', padding:'12px 28px', borderRadius:'9999px', background:'rgba(124,58,237,0.25)', border:'1px solid rgba(124,58,237,0.4)', color:'#c4b5fd', cursor:'pointer', fontSize:'0.85rem' }}>
-          <RotateCcw size={14}/> Try Again
-        </button>
-      </div>
-    );
-  }
-
+  const q = qs[qi];
   return (
-    <div style={{ maxWidth:'360px', margin:'0 auto', display:'flex', flexDirection:'column', gap:'20px' }}>
+    <div style={{ maxWidth: 380, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Progress */}
       <div>
-        <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.72rem', color:'rgba(255,255,255,0.35)', marginBottom:'6px' }}>
-          <span>Question {qIdx+1} / {QUIZ_SIZE}</span>
-          <span>Score: {score}</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'rgba(255,255,255,0.35)', marginBottom: 6, fontFamily: "'Space Grotesk',sans-serif" }}>
+          <span>Question {qi + 1} / 10</span><span>Score: {score}</span>
         </div>
-        <div style={{ width:'100%', height:'2px', background:'rgba(255,255,255,0.07)', borderRadius:'9999px', overflow:'hidden' }}>
-          <div style={{ height:'100%', background:'#7c3aed', width:`${(qIdx/QUIZ_SIZE)*100}%`, transition:'width 0.3s' }} />
-        </div>
-      </div>
-      <div style={{ display:'flex', justifyContent:'center' }}>
-        <div style={{ background:'#fff', borderRadius:'16px', padding:'16px', boxShadow:'0 0 40px rgba(124,58,237,0.25)' }}>
-          <img src={IMG(q.correct)} alt="?" style={{ width:160, height:160, objectFit:'contain', display:'block' }} onError={e=>{e.target.style.display='none';}} />
+        <div style={{ height: 3, background: 'rgba(255,255,255,0.07)', borderRadius: 9999, overflow: 'hidden' }}>
+          <div style={{ height: '100%', background: 'linear-gradient(90deg,#7c3aed,#06b6d4)', width: `${qi * 10}%`, transition: 'width 0.4s' }} />
         </div>
       </div>
-      <p style={{ textAlign:'center', fontSize:'0.82rem', color:'rgba(255,255,255,0.4)' }}>Which letter is this?</p>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
+      {/* Image */}
+      <div style={{ display: 'flex', justifyContent: 'center' }}>
+        <div style={{ background: '#fff', borderRadius: 20, padding: 16, boxShadow: '0 0 40px rgba(124,58,237,0.3)' }}>
+          <img src={IMG(q.correct)} alt="?" style={{ width: 160, height: 160, objectFit: 'contain', display: 'block' }} onError={e => { e.target.style.display = 'none'; }} />
+        </div>
+      </div>
+      <p style={{ textAlign: 'center', fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)', fontFamily: "'Space Grotesk',sans-serif" }}>Which letter is this?</p>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         {q.choices.map(ch => {
-          let bg='rgba(255,255,255,0.05)', col='#fff', brd='rgba(255,255,255,0.1)';
-          if (selected) {
-            if (ch===q.correct) { bg='rgba(52,211,153,0.2)'; brd='rgba(52,211,153,0.5)'; col='#34d399'; }
-            else if (ch===selected) { bg='rgba(248,113,113,0.2)'; brd='rgba(248,113,113,0.5)'; col='#f87171'; }
-            else { bg='rgba(255,255,255,0.03)'; col='rgba(255,255,255,0.25)'; }
+          let bg = 'rgba(255,255,255,0.05)', col = '#fff', brd = 'rgba(255,255,255,0.1)';
+          if (sel) {
+            if (ch === q.correct) { bg = 'rgba(52,211,153,0.2)'; col = '#34d399'; brd = 'rgba(52,211,153,0.5)'; }
+            else if (ch === sel) { bg = 'rgba(248,113,113,0.2)'; col = '#f87171'; brd = 'rgba(248,113,113,0.5)'; }
+            else { bg = 'rgba(255,255,255,0.02)'; col = 'rgba(255,255,255,0.2)'; }
           }
           return (
-            <button key={ch} onClick={()=>answer(ch)} style={{ padding:'20px', borderRadius:'12px', border:`1px solid ${brd}`, background:bg, color:col, fontFamily:"'Bebas Neue',sans-serif", fontSize:'2rem', cursor:'pointer', transition:'all 0.15s' }}>
+            <button key={ch} onClick={() => answer(ch)} style={{ padding: '18px', borderRadius: 12, border: `1px solid ${brd}`, background: bg, color: col, fontFamily: "'Bebas Neue',sans-serif", fontSize: '2.2rem', cursor: 'pointer', transition: 'all 0.15s' }}>
               {ch}
             </button>
           );
@@ -240,90 +244,111 @@ function Quiz() {
   );
 }
 
-const TABS = [
-  { id:'alphabet', label:'Alphabet', icon:BookOpen },
-  { id:'numbers',  label:'Numbers',  icon:Layers },
-  { id:'phrases',  label:'Phrases',  icon:BookOpen },
-  { id:'quiz',     label:'Quiz',     icon:Trophy },
-];
+/* ── Tab button ─────────────────────────────────────────────────────── */
+function Tab({ id, label, active, onClick }) {
+  return (
+    <button onClick={() => onClick(id)} style={{
+      padding: '9px 22px', borderRadius: 10, border: 'none', cursor: 'pointer',
+      fontFamily: "'Space Grotesk',sans-serif", fontWeight: 500, fontSize: '0.82rem',
+      background: active ? 'rgba(124,58,237,0.3)' : 'transparent',
+      color: active ? '#fff' : 'rgba(255,255,255,0.45)',
+      border: `1px solid ${active ? 'rgba(124,58,237,0.5)' : 'transparent'}`,
+      boxShadow: active ? '0 0 16px rgba(124,58,237,0.25)' : 'none',
+      transition: 'all 0.2s',
+    }}>{label}</button>
+  );
+}
 
+/* ── Main page ──────────────────────────────────────────────────────── */
 export default function Learn() {
   const [tab, setTab] = useState('alphabet');
-  const [selected, setSel] = useState(null);
+  const [sel, setSel] = useState(null);
+  const [search, setSearch] = useState('');
   const letters = Object.keys(ALPHABET);
+  const filtered = search ? letters.filter(l => l.toLowerCase().includes(search.toLowerCase())) : letters;
 
   return (
     <div>
       {/* Header */}
-      <div style={{ marginBottom:'32px' }}>
-        <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'6px' }}>
-          <div style={{ width:'24px', height:'1px', background:'#06b6d4' }} />
-          <span style={{ fontSize:'0.7rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'#06b6d4' }}>Visual Dictionary</span>
+      <div style={{ marginBottom: 32 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+          <div style={{ width: 22, height: 1, background: '#06b6d4' }} />
+          <span style={{ fontSize: '0.68rem', letterSpacing: '0.22em', textTransform: 'uppercase', color: '#06b6d4' }}>Visual Dictionary</span>
         </div>
-        <h1 className="display" style={{ fontSize:'clamp(2.5rem,6vw,4rem)' }}>LEARN ASL</h1>
-        <p style={{ color:'rgba(255,255,255,0.4)', fontSize:'0.9rem', marginTop:'6px', fontFamily:"'Space Grotesk',sans-serif" }}>Click any sign card to expand the detail view.</p>
+        <h1 style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 'clamp(2.5rem,6vw,4rem)', margin: 0, lineHeight: 1 }}>
+          LEARN ASL
+        </h1>
+        <p style={{ fontFamily: "'Space Grotesk',sans-serif", color: 'rgba(255,255,255,0.4)', fontSize: '0.9rem', marginTop: 6 }}>
+          Animated reference for every letter, number, and phrase. Click any card to explore.
+        </p>
       </div>
 
-      {/* Tabs */}
-      <div style={{ display:'flex', gap:'4px', background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:'12px', padding:'4px', width:'fit-content', marginBottom:'28px' }}>
-        {TABS.map(({ id, label, icon:Icon }) => (
-          <button key={id} onClick={()=>setTab(id)} style={{
-            display:'flex', alignItems:'center', gap:'6px',
-            padding:'8px 16px', borderRadius:'8px', border:'none', cursor:'pointer',
-            background: tab===id ? 'rgba(124,58,237,0.35)' : 'transparent',
-            color: tab===id ? '#fff' : 'rgba(255,255,255,0.45)',
-            fontSize:'0.82rem', fontWeight:500, transition:'all 0.15s',
-            boxShadow: tab===id ? '0 0 12px rgba(124,58,237,0.3)' : 'none',
-          }}>
-            <Icon size={13} /> {label}
-          </button>
-        ))}
-      </div>
-
-      {tab==='alphabet' && (
-        <>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(90px,1fr))', gap:'10px', marginBottom:'16px' }}>
-            {letters.map(l => <LetterCard key={l} letter={l} data={ALPHABET[l]} onClick={setSel} />)}
+      {/* Tabs + search */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 28 }}>
+        <div style={{ display: 'flex', gap: 4, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: 4 }}>
+          {[['alphabet','Alphabet'],['numbers','Numbers'],['phrases','Phrases'],['quiz','Quiz']].map(([id, lbl]) => (
+            <Tab key={id} id={id} label={lbl} active={tab === id} onClick={setTab} />
+          ))}
+        </div>
+        {tab === 'alphabet' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '8px 14px' }}>
+            <Search size={13} style={{ color: 'rgba(255,255,255,0.3)' }} />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search letter…"
+              style={{ background: 'none', border: 'none', outline: 'none', color: '#fff', fontSize: '0.82rem', width: 120, fontFamily: "'Space Grotesk',sans-serif" }} />
           </div>
-          <p style={{ fontSize:'0.72rem', color:'rgba(255,255,255,0.2)', textAlign:'center' }}>
-            Images via <a href="https://www.lifeprint.com" target="_blank" rel="noopener noreferrer" style={{ color:'rgba(255,255,255,0.35)', textDecoration:'underline' }}>Lifeprint.com</a> — a free ASL educational resource.
+        )}
+      </div>
+
+      {/* ── Alphabet ── */}
+      {tab === 'alphabet' && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(100px,1fr))', gap: 10 }}>
+            {filtered.map(l => <LetterCard key={l} letter={l} data={ALPHABET[l]} onClick={setSel} />)}
+          </div>
+          {filtered.length === 0 && <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.3)', marginTop: 40 }}>No results for "{search}"</p>}
+          <p style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.2)', textAlign: 'center', marginTop: 20 }}>
+            Images from <a href="https://www.lifeprint.com" target="_blank" rel="noopener noreferrer" style={{ color: 'rgba(255,255,255,0.35)' }}>Lifeprint.com</a> — free ASL educational resource
           </p>
         </>
       )}
 
-      {tab==='numbers' && (
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))', gap:'12px' }}>
+      {/* ── Numbers ── */}
+      {tab === 'numbers' && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(130px,1fr))', gap: 12 }}>
           {Object.entries(NUMBERS).map(([num, data]) => (
-            <div key={num} style={{ ...glass, padding:'16px', display:'flex', flexDirection:'column', alignItems:'center', gap:'10px' }}>
-              <SignImage letter={num} size="md" />
-              <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:'1.8rem' }}>{num}</span>
-              <p style={{ fontSize:'0.72rem', color:'rgba(255,255,255,0.45)', textAlign:'center', lineHeight:1.5 }}>{data.desc}</p>
+            <div key={num} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16, padding: 18, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+              <SignImg letter={num} size={80} />
+              <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '2rem' }}>{num}</span>
+              <p style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.45)', textAlign: 'center', lineHeight: 1.5, fontFamily: "'Space Grotesk',sans-serif", margin: 0 }}>{data.desc}</p>
             </div>
           ))}
         </div>
       )}
 
-      {tab==='phrases' && (
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:'12px' }}>
-          {PHRASES.map(({ sign, desc, category }) => (
-            <div key={sign} style={{ ...glass, padding:'18px' }}>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'8px' }}>
-                <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:'1.3rem', letterSpacing:'0.04em' }}>{sign}</span>
-                <span style={{ fontSize:'0.65rem', padding:'3px 10px', borderRadius:'9999px', background:'rgba(6,182,212,0.12)', color:'#67e8f9', border:'1px solid rgba(6,182,212,0.2)' }}>{category}</span>
+      {/* ── Phrases ── */}
+      {tab === 'phrases' && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 12 }}>
+          {PHRASES.map(({ sign, desc, cat }) => (
+            <div key={sign} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16, padding: 20 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                <span style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: '1.4rem', letterSpacing: '0.04em' }}>{sign}</span>
+                <span style={{ fontSize: '0.62rem', padding: '3px 10px', borderRadius: 9999, background: 'rgba(6,182,212,0.1)', color: '#67e8f9', border: '1px solid rgba(6,182,212,0.2)' }}>{cat}</span>
               </div>
-              <p style={{ fontSize:'0.82rem', color:'rgba(255,255,255,0.5)', lineHeight:1.6 }}>{desc}</p>
+              <p style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: '0.84rem', color: 'rgba(255,255,255,0.5)', lineHeight: 1.65, margin: 0 }}>{desc}</p>
             </div>
           ))}
         </div>
       )}
 
-      {tab==='quiz' && <Quiz />}
+      {/* ── Quiz ── */}
+      {tab === 'quiz' && <Quiz />}
 
-      {selected && (
-        <DetailModal letter={selected} data={ALPHABET[selected]}
-          onClose={()=>setSel(null)}
-          onPrev={()=>setSel(letters[letters.indexOf(selected)-1])}
-          onNext={()=>setSel(letters[letters.indexOf(selected)+1])} />
+      {/* Detail modal */}
+      {sel && (
+        <DetailModal letter={sel} data={ALPHABET[sel]}
+          onClose={() => setSel(null)}
+          onPrev={() => setSel(letters[letters.indexOf(sel) - 1])}
+          onNext={() => setSel(letters[letters.indexOf(sel) + 1])} />
       )}
     </div>
   );
