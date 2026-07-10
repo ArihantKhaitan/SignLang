@@ -1,6 +1,6 @@
 # SignLang AI
 
-A full two-way ASL sign language system — live gesture recognition, animated learning dictionary, text-to-sign player, and custom model training. Built with a cinematic dark UI inspired by the Horizon aesthetic.
+Real-time fingerspelling recognition for **ASL, BSL and ISL** that runs **entirely in your browser** — no Python backend, no server, no GPU required. Hand tracking via MediaPipe (WebAssembly), classification via custom-trained neural networks evaluated in plain JavaScript.
 
 **Built by [Arihant Khaitan](https://github.com/ArihantKhaitan) with [Claude](https://claude.ai)**
 
@@ -10,22 +10,44 @@ A full two-way ASL sign language system — live gesture recognition, animated l
 
 | Feature | Description |
 |---|---|
-| **Live Interpreter** | Webcam-based real-time ASL recognition via MediaPipe + RandomForest. Builds full sentences hands-free with hold-detection and auto-spacing. |
-| **Text-to-Sign Player** | Type any sentence and watch it fingerspelled letter-by-letter using animated ASL GIFs. Adjustable playback speed. |
-| **Learn ASL** | Animated reference cards for the full A–Z alphabet, numbers 0–9, and common phrases. Includes an interactive quiz mode. |
-| **Data Collection** | Capture custom gesture samples directly from your webcam with a live progress bar. |
-| **Model Training** | Train a personal RandomForest classifier on your collected data in under 5 seconds. No GPU required. |
-| **Text-to-Speech** | Hit Speak to hear the interpreted sentence read aloud via the system TTS engine. |
+| **Live Interpreter** | Webcam sign recognition at 30–60 fps with a hand-skeleton overlay, in three languages: ASL (one-handed), BSL and ISL (two-handed). Hold a sign to register a letter; pause to end a word. |
+| **Practice mode** | Type a word, and the interpreter shows each sign to copy — it advances automatically when you sign each letter correctly. |
+| **Text-to-Sign Player** | Type any sentence and watch it fingerspelled letter-by-letter in ASL, BSL or ISL. |
+| **Learn** | Reference cards for the alphabet and numbers in all three languages, animated ASL phrase signs, and a quiz mode. |
+| **Text-to-Speech** | Completed words and sentences are read aloud with the browser's built-in speech engine. |
+
+### Languages
+
+| | Hands | Letters recognised | Digits recognised | Source data |
+|---|---|---|---|---|
+| **ASL** American Sign Language | 1 | A–Z | — (reference images for 1–10) | 10.8k photos ([Marxulia](https://huggingface.co/datasets/Marxulia/asl_sign_languages_alphabets_v03)) |
+| **BSL** British Sign Language | 2 | A–Z except H, J, Y (motion) | 0–10 | 30.5k landmark samples ([datMaul](https://github.com/datMaul/BSL_Numbers_and_Alphabet_Recognition)) |
+| **ISL** Indian Sign Language | 2 | A–Z except H, J, V | 0–9 | 9.1k photos ([akritRihal](https://huggingface.co/datasets/akritRihal/Indian_Sign_Language_dataset)) |
+
+Reference imagery in Learn / Practice / Sign Player: ASL letters use Lifeprint animated GIFs and ASL numbers use tiles from Lifeprint's number chart; BSL signs are skeleton diagrams rendered from the median hand pose of the training data; ISL signs are photos from the training dataset. All assets are served locally from `frontend/public/signs/`.
+
+---
+
+## How the recognition works
+
+1. **Hand tracking** — MediaPipe's `HandLandmarker` (Tasks API, WASM) finds 21 3-D landmarks per hand per frame, directly in the browser (one hand for ASL, two for BSL/ISL).
+2. **Normalization** — landmarks are centered (wrist for ASL; mean of both wrists for BSL/ISL), scaled by hand size, and two-hand slots are ordered left-to-right. Features are position- and distance-invariant.
+3. **Classification** — a small MLP per language, trained with mirror + rotation augmentation so both left- and right-handed signing works.
+4. **Stabilization** — a majority-vote smoother over recent frames plus a hold-to-register timer turns noisy per-frame predictions into reliable letters.
+
+The classifiers were trained offline with scikit-learn and exported to JSON; inference is a hand-rolled matrix multiply in [mlp.js](frontend/src/lib/mlp.js) — no TensorFlow.js needed.
+
+The training pipeline guarantees that **the exact same landmark normalization** is used at training time (Python) and inference time (JavaScript) — a mismatch there is the classic reason landmark classifiers silently fail. The JS implementation is verified against the Python reference on held-out samples.
+
+BSL reference diagrams in Learn/practice are skeleton renders of the median hand pose per letter from the training data; ISL references are photos from the dataset.
 
 ---
 
 ## Tech Stack
 
-**Backend** — Python 3.13, Flask, MediaPipe Tasks API (`HandLandmarker`), scikit-learn (RandomForest), OpenCV, pyttsx3
+**Frontend** — React 19, Vite, `@mediapipe/tasks-vision`, Tailwind CSS, React Router, Lucide Icons
 
-**Frontend** — React 18, Vite, Tailwind CSS, React Router, Lucide Icons
-
-**ML Pipeline** — 63-dim normalized hand landmark vectors (21 × x/y/z), centered at wrist, scaled by wrist→middle-MCP distance. RandomForest with 250 estimators.
+**ML pipeline (offline)** — MediaPipe HandLandmarker for landmark extraction, scikit-learn MLP, exported to JSON
 
 ---
 
@@ -33,149 +55,59 @@ A full two-way ASL sign language system — live gesture recognition, animated l
 
 ```
 SignLang/
-├── backend/
-│   ├── app.py                  # Flask entry point (port 8001)
-│   ├── routes.py               # All API routes
-│   ├── mediapipe_hands.py      # MediaPipe Tasks API camera + landmark extraction
-│   ├── asl_classifier.py       # RandomForest classifier wrapper
-│   ├── sentence_builder.py     # Hold-detection sentence builder
-│   └── requirements.txt
 ├── frontend/
+│   ├── public/
+│   │   ├── models/hand_landmarker.task   # MediaPipe hand model (offline)
+│   │   └── wasm/                         # MediaPipe WASM runtime (offline)
 │   ├── src/
+│   │   ├── lib/
+│   │   │   ├── handLandmarker.js   # MediaPipe Tasks setup
+│   │   │   ├── classifier.js       # MLP inference + smoothing
+│   │   │   ├── sentenceBuilder.js  # hold-to-register sentence logic
+│   │   │   ├── drawHand.js         # glowing skeleton renderer
+│   │   │   └── tts.js              # Web Speech API
+│   │   ├── model/aslModel.json     # trained MLP weights (A–Z)
 │   │   ├── components/
-│   │   │   ├── StarField.jsx   # Canvas animated starfield
-│   │   │   ├── HeroBackground.jsx  # SVG mountains + nebula + light beam
-│   │   │   └── CameraView.jsx
-│   │   ├── pages/
-│   │   │   ├── Dashboard.jsx   # Cinematic hero landing
-│   │   │   ├── Interpreter.jsx
-│   │   │   ├── Learn.jsx
-│   │   │   ├── SignPlayer.jsx
-│   │   │   ├── DataCollection.jsx
-│   │   │   └── Training.jsx
-│   │   └── App.jsx
-│   ├── index.html
+│   │   └── pages/                  # Dashboard, Interpreter, Learn, SignPlayer
 │   └── vite.config.js
-├── legacy_code/                # Original forked scripts (archived)
-└── run.bat                     # One-click launcher (Windows)
+└── run.bat                         # One-click launcher (Windows)
 ```
 
 ---
 
-## Setup & Installation
+## Setup & Run
 
 ### Prerequisites
-- Python **3.13** (tested; 3.10+ should work)
 - Node.js **18+**
 - A webcam
-
-### 1 — Clone the repo
-
-```bash
-git clone https://github.com/ArihantKhaitan/SignLang.git
-cd SignLang
-```
-
-### 2 — Backend
-
-```bash
-cd backend
-pip install -r requirements.txt
-```
-
-> On first run, `mediapipe_hands.py` will automatically download the `hand_landmarker.task` model (~3 MB) from Google's CDN.
-
-### 3 — Frontend
 
 ```bash
 cd frontend
 npm install --ignore-scripts
+npm run dev
 ```
 
-> `--ignore-scripts` avoids an esbuild postinstall issue on newer Node/Python versions.
+Or on Windows, just double-click **run.bat**.
 
-### 4 — Run
+Open **http://localhost:3010**, allow camera access, and sign.
 
-**Windows (one click):**
-```
-run.bat
-```
-
-**Manual:**
-```bash
-# Terminal 1 — backend
-cd backend && python app.py
-
-# Terminal 2 — frontend
-cd frontend && npm run dev
-```
-
-| Service | URL |
-|---|---|
-| Frontend | http://localhost:3010 |
-| Backend API | http://localhost:8001 |
+> Everything — hand tracking, classification, speech — runs locally in the browser. No video ever leaves your machine.
 
 ---
 
-## Usage Guide
+## Usage
 
-### Collecting gesture data
-1. Open **Collect** in the nav
-2. Pick a letter (A–Z) or type a custom label
-3. Set sample count (300 recommended) and click **Start Capture**
-4. Hold the sign steady in front of your camera
-5. Repeat for each gesture you want the model to recognise
-
-### Training
-1. Go to **Train** — you'll see a bar chart of your collected samples
-2. Click **Start Training** — the model trains in under 5 seconds
-3. A green status pill confirms the model is active
-
-### Using the interpreter
-1. Open **Interpreter** — the live camera feed starts immediately
-2. Make an ASL sign and hold it for **1.5 seconds** to register a letter
-3. Pause for **2 seconds** to end a word
-4. Use the **Del / Space / Speak / Clear** buttons, or train SPACE and DEL signs for fully hands-free operation
-
-### Learning ASL
-- Browse the **Alphabet**, **Numbers**, and **Phrases** tabs for animated reference cards
-- Click any card to open the full detail view with tips and similar-sign comparisons
-- Take the **Quiz** to test yourself with 10 random multiple-choice questions
+1. Open **Interpreter** and allow camera access.
+2. Make an ASL alphabet sign. The skeleton overlay turns green as a letter registers.
+3. Hold a sign ~1.2 s to add the letter; pause ~2 s to finish a word.
+4. Use **Del / Space / Speak / Clear** buttons for corrections, or toggle auto-speak.
+5. **J** and **Z** involve motion in real ASL — hold their final pose to register them.
 
 ---
 
-## API Reference
+## Retraining the model (optional)
 
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/api/video_feed` | MJPEG camera stream |
-| GET | `/api/predict` | Current prediction + sentence state |
-| GET | `/api/status` | Model status, sample counts, labels |
-| POST | `/api/capture/start` | Start data collection `{label, target}` |
-| POST | `/api/capture/stop` | Stop data collection |
-| POST | `/api/train` | Train the classifier |
-| POST | `/api/tts` | Text-to-speech `{text}` |
-| POST | `/api/sentence/clear` | Clear sentence |
-| POST | `/api/sentence/backspace` | Delete last character |
-| POST | `/api/sentence/space` | Insert word space |
-
----
-
-## Troubleshooting
-
-**Camera not showing**
-- Make sure the backend is running on port 8001
-- The Vite proxy forwards `/api/*` to the backend — no CORS issues in dev
-
-**`module 'mediapipe' has no attribute 'solutions'`**
-- This means you have mediapipe ≥ 0.10.33 which removed the legacy `solutions` API
-- The code already uses the Tasks API (`mp.tasks.vision.HandLandmarker`) — just make sure you installed from `requirements.txt`
-
-**`npm install` fails**
-- Use `npm install --ignore-scripts` to skip the esbuild postinstall script
-
-**Python version conflicts**
-- If `python` on your PATH is not 3.13, edit `run.bat` to use the full path to your Python 3.13 executable
+The model was trained on the [Marxulia ASL alphabets dataset](https://huggingface.co/datasets/Marxulia/asl_sign_languages_alphabets_v03) (10.8k images, 26 classes). To retrain: extract landmarks with MediaPipe's `HandLandmarker`, normalize (wrist-centered, scaled by max landmark distance), augment (mirror + ±12° rotation + noise), train an MLP, and export `coefs_`/`intercepts_` to `frontend/src/model/aslModel.json`.
 
 ---
 

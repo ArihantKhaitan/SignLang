@@ -1,256 +1,587 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Volume2, VolumeX, Trash2, Delete, Info, VideoOff, Video } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Volume2, VolumeX, Trash2, Delete, VideoOff, Video, Loader2, AlertTriangle, Space, Play, X, SkipForward, CheckCircle2 } from 'lucide-react';
+import { createHandLandmarker } from '../lib/handLandmarker';
+import { classifyHands, PredictionSmoother, LANGUAGES, supportedSymbols } from '../lib/classifier';
+import { SentenceBuilder } from '../lib/sentenceBuilder';
+import { drawHand } from '../lib/drawHand';
+import { signImage } from '../lib/signRefs';
+import { speak } from '../lib/tts';
 
-const glass = {
-  background: 'rgba(255,255,255,0.04)',
-  backdropFilter: 'blur(24px) saturate(180%)',
-  WebkitBackdropFilter: 'blur(24px) saturate(180%)',
-  border: '1px solid rgba(255,255,255,0.08)',
-  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 32px rgba(0,0,0,0.4)',
-  borderRadius: '18px',
-};
+const PRACTICE_HOLD_MS = 800;
+const PRACTICE_MIN_CONF = 0.65;
 
 /* Circular hold-progress arc */
 const HoldRing = ({ progress }) => {
   const r = 46, circ = 2 * Math.PI * r;
   const filled = circ * Math.min(progress, 1);
-  const color = progress >= 1 ? '#34d399' : '#7c3aed';
+  const color = progress >= 1 ? 'var(--success)' : 'var(--accent)';
   return (
     <svg width="108" height="108"
       style={{ position: 'absolute', inset: 0, margin: 'auto', transform: 'rotate(-90deg)' }}>
-      <circle cx="54" cy="54" r={r} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="4" />
+      <circle cx="54" cy="54" r={r} fill="none" stroke="var(--border)" strokeWidth="3" />
       {progress > 0 && (
-        <circle cx="54" cy="54" r={r} fill="none" stroke={color} strokeWidth="4"
+        <circle cx="54" cy="54" r={r} fill="none" stroke={color} strokeWidth="3"
           strokeDasharray={`${filled} ${circ}`} strokeLinecap="round"
-          style={{ transition: 'stroke-dasharray 0.12s linear', filter: `drop-shadow(0 0 8px ${color})` }} />
+          style={{ transition: 'stroke-dasharray 0.12s linear' }} />
       )}
     </svg>
   );
 };
 
-const api = (path, opts) => fetch(`/api${path}`, opts);
+/* Reference image with letter fallback */
+function RefImage({ lang, symbol, size = 120 }) {
+  const [err, setErr] = useState(false);
+  useEffect(() => setErr(false), [lang, symbol]);
+  if (err) return (
+    <div style={{ width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-soft)', borderRadius: 8 }}>
+      <span style={{ fontSize: size * 0.4, fontWeight: 700, color: 'var(--accent)' }}>{symbol}</span>
+    </div>
+  );
+  return <img src={signImage(lang, symbol)} alt={`${LANGUAGES[lang].name} sign ${symbol}`}
+    width={size} height={size}
+    style={{ width: size, height: size, objectFit: 'contain', borderRadius: 8, background: '#fff' }}
+    onError={() => setErr(true)} />;
+}
 
 export default function Interpreter() {
-  const [state, setState] = useState({
-    prediction: '', confidence: 0, hand_detected: false,
-    sentence_state: { current_letter: null, hold_progress: 0, current_word: '', words: [], full_text: '' },
-  });
-  const [cameraOn, setCameraOn] = useState(true);
-  const [voiceOn, setVoiceOn]   = useState(true);
-  const [flash, setFlash]       = useState(false);
-  const [speaking, setSpeaking] = useState(false);
-  const prevText = useRef('');
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const builderRef = useRef(new SentenceBuilder());
+  const smootherRef = useRef(new PredictionSmoother());
+  const voiceOnRef = useRef(true);
 
-  useEffect(() => {
-    const id = setInterval(async () => {
-      try {
-        const d = await api('/predict').then(r => r.json());
-        setState(d);
-        if (d.sentence_state.full_text !== prevText.current) {
-          prevText.current = d.sentence_state.full_text;
-          setFlash(true); setTimeout(() => setFlash(false), 200);
-        }
-      } catch {}
-    }, 150);
-    return () => clearInterval(id);
+  const [lang, setLang] = useState('asl');
+  const [cameraOn, setCameraOn] = useState(true);
+  const [voiceOn, setVoiceOn] = useState(true);
+  const [engine, setEngine] = useState({ phase: 'loading', error: null }); // loading | camera | running | error
+  const [view, setView] = useState({
+    prediction: '', confidence: 0, handsDetected: 0, fps: 0,
+    practiceProgress: 0,
+    sentence: builderRef.current.state(),
+  });
+  const [speaking, setSpeaking] = useState(false);
+
+  // ── Practice ("follow along") mode ──
+  const [practiceInput, setPracticeInput] = useState('');
+  const [practice, setPractice] = useState(null); // { tokens:[{ch,type}], idx, done }
+  const practiceRef = useRef({ active: false, target: null, holdStart: 0 });
+  const advanceRef = useRef(() => {});
+
+  voiceOnRef.current = voiceOn;
+
+  const nextSupportedIdx = useCallback((tokens, from) => {
+    for (let i = from; i < tokens.length; i++) {
+      if (tokens[i].type === 'letter') return i;
+    }
+    return -1;
   }, []);
 
-  const clear     = () => api('/sentence/clear',    { method: 'POST' });
-  const backspace = () => api('/sentence/backspace', { method: 'POST' });
-  const space     = () => api('/sentence/space',     { method: 'POST' });
-  const speak     = async () => {
-    const text = state.sentence_state.full_text;
+  const startPractice = () => {
+    const text = practiceInput.trim().toUpperCase();
+    if (!text) return;
+    const symbols = supportedSymbols(lang);
+    const tokens = [...text].map((ch) => ({
+      ch,
+      type: ch === ' ' ? 'space' : symbols.has(ch) ? 'letter' : 'skip',
+    }));
+    const idx = nextSupportedIdx(tokens, 0);
+    if (idx === -1) return;
+    setPractice({ tokens, idx, done: false });
+  };
+
+  const advancePractice = useCallback(() => {
+    setPractice((p) => {
+      if (!p || p.done) return p;
+      const idx = nextSupportedIdx(p.tokens, p.idx + 1);
+      if (idx === -1) return { ...p, idx: p.idx, done: true };
+      return { ...p, idx };
+    });
+  }, [nextSupportedIdx]);
+  advanceRef.current = advancePractice;
+
+  // keep the rAF loop's view of practice in sync without restarting the camera
+  useEffect(() => {
+    practiceRef.current = {
+      active: !!practice && !practice.done,
+      target: practice && !practice.done ? practice.tokens[practice.idx].ch : null,
+      holdStart: 0,
+    };
+  }, [practice]);
+
+  // reset practice + smoother when language changes
+  useEffect(() => {
+    setPractice(null);
+    smootherRef.current.clear();
+    builderRef.current.clear();
+  }, [lang]);
+
+  useEffect(() => {
+    if (!cameraOn) return;
+    let cancelled = false;
+    let raf = 0;
+    let landmarker = null;
+    let stream = null;
+
+    async function start() {
+      try {
+        setEngine({ phase: 'loading', error: null });
+        landmarker = await createHandLandmarker(LANGUAGES[lang].numHands);
+        if (cancelled) return;
+
+        setEngine({ phase: 'camera', error: null });
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+          audio: false,
+        });
+        if (cancelled) return;
+
+        const video = videoRef.current;
+        video.srcObject = stream;
+        await video.play();
+        if (cancelled) return;
+        setEngine({ phase: 'running', error: null });
+
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        let lastVideoTime = -1;
+        let frames = 0;
+        let fpsWindowStart = performance.now();
+        let fps = 0;
+        let lastUiPush = 0;
+
+        const loop = () => {
+          if (cancelled) return;
+          raf = requestAnimationFrame(loop);
+          if (video.readyState < 2 || video.currentTime === lastVideoTime) return;
+          lastVideoTime = video.currentTime;
+
+          if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+          }
+
+          const result = landmarker.detectForVideo(video, performance.now());
+          const hands = result.landmarks || [];
+
+          let raw = { label: null, confidence: 0 };
+          if (hands.length > 0) raw = classifyHands(lang, hands);
+          const smooth = smootherRef.current.push(hands.length ? raw.label : null, raw.confidence);
+
+          const now = performance.now();
+          const builder = builderRef.current;
+          const ps = practiceRef.current;
+          let practiceProgress = 0;
+
+          if (ps.active) {
+            // follow-along: hold the target sign to advance
+            if (smooth.label === ps.target && smooth.confidence >= PRACTICE_MIN_CONF) {
+              if (!ps.holdStart) ps.holdStart = now;
+              practiceProgress = Math.min((now - ps.holdStart) / PRACTICE_HOLD_MS, 1);
+              if (practiceProgress >= 1) {
+                ps.holdStart = 0;
+                ps.active = false;          // pause until state effect re-syncs
+                advanceRef.current();
+              }
+            } else {
+              ps.holdStart = 0;
+            }
+          } else if (!practiceRef.current.target) {
+            // free signing: build sentences
+            const before = builder.words.length;
+            builder.update(smooth.label, smooth.confidence);
+            if (voiceOnRef.current && builder.words.length > before) {
+              speak(builder.words[builder.words.length - 1]);
+            }
+          }
+
+          // draw skeletons (mirrored to match the selfie view)
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          if (hands.length) {
+            ctx.save();
+            ctx.translate(canvas.width, 0);
+            ctx.scale(-1, 1);
+            const locked = ps.target ? practiceProgress >= 1 : builder.holdProgress >= 1;
+            for (const lm of hands) drawHand(ctx, lm, canvas.width, canvas.height, locked);
+            ctx.restore();
+          }
+
+          frames++;
+          if (now - fpsWindowStart >= 1000) {
+            fps = Math.round((frames * 1000) / (now - fpsWindowStart));
+            frames = 0;
+            fpsWindowStart = now;
+          }
+
+          if (now - lastUiPush > 66) { // ~15 Hz UI updates
+            lastUiPush = now;
+            setView({
+              prediction: smooth.label || '',
+              confidence: smooth.confidence,
+              handsDetected: hands.length,
+              fps,
+              practiceProgress,
+              sentence: builder.state(),
+            });
+          }
+        };
+        loop();
+      } catch (err) {
+        console.error(err);
+        if (!cancelled) setEngine({ phase: 'error', error: err?.message || String(err) });
+      }
+    }
+
+    start();
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+      stream?.getTracks().forEach((t) => t.stop());
+      landmarker?.close();
+      smootherRef.current.clear();
+    };
+  }, [cameraOn, lang]);
+
+  const pushSentence = () => setView((v) => ({ ...v, sentence: builderRef.current.state() }));
+  const clear = () => { builderRef.current.clear(); pushSentence(); };
+  const backspace = () => { builderRef.current.backspace(); pushSentence(); };
+  const space = () => { builderRef.current.endWord(); pushSentence(); };
+  const speakSentence = () => {
+    const text = builderRef.current.fullText;
     if (!text) return;
     setSpeaking(true);
-    await api('/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+    speak(text);
     setTimeout(() => setSpeaking(false), 1500);
   };
 
-  const { prediction, confidence, hand_detected, sentence_state: ss } = state;
+  const { prediction, confidence, handsDetected, fps, practiceProgress, sentence: ss } = view;
   const pct = Math.round(confidence * 100);
+  const langInfo = LANGUAGES[lang];
+  const practicing = !!practice && !practice.done;
 
   return (
     <div>
-      {/* Page header */}
-      <div style={{ marginBottom: 28 }}>
-        <span style={{ fontSize: '0.65rem', letterSpacing: '0.22em', textTransform: 'uppercase', color: 'rgba(124,58,237,0.8)', display: 'block', marginBottom: 6 }}>Live Recognition</span>
-        <h1 style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 'clamp(2.4rem,5vw,3.5rem)', lineHeight: 1, margin: 0 }}>
-          INTERPRETER
-        </h1>
+      {/* Page header + language switch */}
+      <div style={{ marginBottom: 28, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+        <div>
+          <h1 style={{ fontSize: '1.6rem', fontWeight: 700, letterSpacing: '-0.02em', marginBottom: 4 }}>
+            Interpreter
+          </h1>
+          <p style={{ fontSize: '0.92rem', color: 'var(--text-2)' }}>
+            {langInfo.full} · hold a sign to add a letter, pause to end a word.
+          </p>
+        </div>
+        <div style={{ display: 'inline-flex', gap: 2, padding: 3, background: '#101114', border: '1px solid var(--border)', borderRadius: 10 }}>
+          {Object.values(LANGUAGES).map((l) => (
+            <button key={l.key} onClick={() => setLang(l.key)} style={{
+              minHeight: 38, padding: '0 16px', borderRadius: 8, border: 'none', cursor: 'pointer',
+              fontSize: '0.85rem', fontWeight: lang === l.key ? 600 : 400,
+              background: lang === l.key ? 'var(--surface-grad)' : 'transparent',
+              color: lang === l.key ? 'var(--text)' : 'var(--text-2)',
+              boxShadow: lang === l.key ? 'inset 0 1px 0 rgba(255,255,255,0.06), 0 1px 3px rgba(0,0,0,0.4)' : 'none',
+              transition: 'all 0.15s ease',
+            }}>{l.name}</button>
+          ))}
+        </div>
       </div>
 
-      {/* ── Two-column grid ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 20, alignItems: 'start' }}
-        className="interp-grid">
+      <div className="interp-grid">
 
-        {/* ── LEFT: Camera ── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {/* Camera panel */}
-          <div style={{ position: 'relative', ...glass, overflow: 'hidden', padding: 0, aspectRatio: '16/9', minHeight: 320 }}>
-            {cameraOn ? (
-              <img
-                src="/api/video_feed"
-                alt="Live camera feed"
-                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+        {/* ── LEFT: Camera + practice ── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+        <div className="card" style={{ position: 'relative', overflow: 'hidden', aspectRatio: '16/9', minHeight: 320, background: '#000' }}>
+          {cameraOn ? (
+            <>
+              <video
+                ref={videoRef}
+                muted playsInline
+                style={{
+                  position: 'absolute', inset: 0, width: '100%', height: '100%',
+                  objectFit: 'cover', transform: 'scaleX(-1)',
+                }}
               />
-            ) : (
-              <div style={{
-                width: '100%', height: '100%', display: 'flex', flexDirection: 'column',
-                alignItems: 'center', justifyContent: 'center', gap: 12,
-                background: 'rgba(0,0,0,0.6)',
-              }}>
-                <VideoOff size={40} style={{ color: 'rgba(255,255,255,0.2)' }} />
-                <span style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.3)' }}>Camera off</span>
-              </div>
-            )}
-
-            {/* Camera toggle button — top-right corner */}
-            <button
-              onClick={() => setCameraOn(v => !v)}
-              style={{
-                position: 'absolute', top: 14, right: 14,
-                display: 'flex', alignItems: 'center', gap: 6,
-                padding: '7px 14px', borderRadius: 9999, border: 'none', cursor: 'pointer',
-                background: cameraOn ? 'rgba(0,0,0,0.55)' : 'rgba(239,68,68,0.25)',
-                backdropFilter: 'blur(12px)',
-                color: cameraOn ? 'rgba(255,255,255,0.8)' : '#f87171',
-                fontSize: '0.72rem', letterSpacing: '0.06em',
-                border: `1px solid ${cameraOn ? 'rgba(255,255,255,0.12)' : 'rgba(239,68,68,0.4)'}`,
-                transition: 'all 0.2s',
-              }}
-            >
-              {cameraOn ? <><Video size={13} /> Camera On</> : <><VideoOff size={13} /> Camera Off</>}
-            </button>
-
-            {/* Hand detected indicator — bottom-left */}
+              <canvas
+                ref={canvasRef}
+                style={{
+                  position: 'absolute', inset: 0, width: '100%', height: '100%',
+                  objectFit: 'cover', pointerEvents: 'none',
+                }}
+              />
+              {engine.phase !== 'running' && (
+                <div style={{
+                  position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', justifyContent: 'center', gap: 12, background: '#0e0f11',
+                }}>
+                  {engine.phase === 'error' ? (
+                    <>
+                      <AlertTriangle size={30} style={{ color: 'var(--danger)' }} />
+                      <span style={{ fontSize: '0.85rem', color: 'var(--danger)', maxWidth: 380, textAlign: 'center', padding: '0 20px' }}>
+                        {engine.error?.includes('Permission') || engine.error?.includes('NotAllowed')
+                          ? 'Camera permission denied — allow camera access and reload.'
+                          : `Couldn't start: ${engine.error}`}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <Loader2 size={26} style={{ color: 'var(--text-2)', animation: 'spin 1s linear infinite' }} />
+                      <span style={{ fontSize: '0.85rem', color: 'var(--text-2)' }}>
+                        {engine.phase === 'loading' ? 'Loading hand tracking…' : 'Starting camera…'}
+                      </span>
+                    </>
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
             <div style={{
-              position: 'absolute', bottom: 14, left: 14,
+              position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center', gap: 10,
+            }}>
+              <VideoOff size={32} style={{ color: 'var(--text-3)' }} />
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-2)' }}>Camera off</span>
+            </div>
+          )}
+
+          {/* Camera toggle */}
+          <button
+            onClick={() => setCameraOn(v => !v)}
+            style={{
+              position: 'absolute', top: 12, right: 12,
+              display: 'flex', alignItems: 'center', gap: 6,
+              minHeight: 36, padding: '0 14px', borderRadius: 8, cursor: 'pointer',
+              background: 'rgba(14,15,17,0.8)',
+              backdropFilter: 'blur(6px)',
+              color: cameraOn ? 'var(--text)' : 'var(--danger)',
+              fontSize: '0.8rem', fontWeight: 500,
+              border: '1px solid var(--border)',
+            }}
+          >
+            {cameraOn ? <><Video size={13} /> On</> : <><VideoOff size={13} /> Off</>}
+          </button>
+
+          {/* Status row */}
+          <div style={{ position: 'absolute', bottom: 12, left: 12, display: 'flex', gap: 8 }}>
+            <div style={{
               display: 'flex', alignItems: 'center', gap: 7,
-              padding: '5px 12px', borderRadius: 9999,
-              background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)',
-              border: '1px solid rgba(255,255,255,0.07)',
-              fontSize: '0.68rem', color: hand_detected ? '#34d399' : 'rgba(255,255,255,0.3)',
+              padding: '5px 12px', borderRadius: 8,
+              background: 'rgba(14,15,17,0.8)',
+              backdropFilter: 'blur(6px)',
+              border: '1px solid var(--border)',
+              fontSize: '0.75rem', fontWeight: 500,
+              color: handsDetected ? 'var(--success)' : 'var(--text-2)',
             }}>
               <span style={{
                 width: 7, height: 7, borderRadius: '50%',
-                background: hand_detected ? '#34d399' : 'rgba(255,255,255,0.2)',
-                boxShadow: hand_detected ? '0 0 8px #34d39980' : 'none',
-                animation: hand_detected ? 'nebulaPulse 1.5s ease-in-out infinite' : 'none',
+                background: handsDetected ? 'var(--success)' : '#4a4f57',
               }} />
-              {hand_detected ? 'Hand detected' : 'No hand in frame'}
+              {handsDetected === 0 ? 'No hand in frame'
+                : handsDetected === 1 ? 'Hand detected' : '2 hands detected'}
             </div>
+            {engine.phase === 'running' && fps > 0 && (
+              <div style={{
+                padding: '5px 12px', borderRadius: 8,
+                background: 'rgba(14,15,17,0.8)',
+                backdropFilter: 'blur(6px)',
+                border: '1px solid var(--border)',
+                fontSize: '0.75rem', color: 'var(--text-2)',
+                fontVariantNumeric: 'tabular-nums',
+              }}>{fps} fps</div>
+            )}
           </div>
         </div>
 
-        {/* ── RIGHT: Detection + Sentence ── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* ── Practice / follow-along ── */}
+      <div className="card" style={{ padding: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: practice ? 18 : 12 }}>
+          <div>
+            <span style={{ fontSize: '0.95rem', fontWeight: 600, display: 'block' }}>Practice</span>
+            <span style={{ fontSize: '0.82rem', color: 'var(--text-2)' }}>
+              Type a word, copy the sign shown, and it advances when you get each letter right.
+            </span>
+          </div>
+          {practice && (
+            <button onClick={() => setPractice(null)} className="btn btn-ghost" style={{ fontSize: '0.8rem' }}>
+              <X size={14} /> Stop
+            </button>
+          )}
+        </div>
 
-          {/* Detected sign card */}
-          <div style={{ ...glass, padding: 18 }}>
+        {!practice ? (
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <input
+              value={practiceInput}
+              onChange={(e) => setPracticeInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && startPractice()}
+              placeholder={`Type a word to practise in ${langInfo.name} — e.g. HELLO`}
+              aria-label="Word to practise"
+              style={{
+                flex: 1, minWidth: 220, background: 'var(--bg)', border: '1px solid var(--border)',
+                borderRadius: 8, padding: '0 14px', minHeight: 44,
+                color: 'var(--text)', fontSize: '0.92rem', outline: 'none',
+              }}
+              onFocus={(e) => { e.target.style.borderColor = 'var(--accent)'; }}
+              onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
+            />
+            <button onClick={startPractice} className="btn btn-primary">
+              <Play size={14} /> Start
+            </button>
+          </div>
+        ) : practice.done ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '24px 0' }}>
+            <CheckCircle2 size={40} style={{ color: 'var(--success)' }} />
+            <span style={{ fontSize: '1.05rem', fontWeight: 600 }}>Nice — you signed it all!</span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => { const t = practice.tokens; setPractice({ tokens: t, idx: nextSupportedIdx(t, 0), done: false }); }}
+                className="btn btn-secondary" style={{ fontSize: '0.85rem' }}>Again</button>
+              <button onClick={() => setPractice(null)} className="btn btn-primary" style={{ fontSize: '0.85rem' }}>New word</button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: 24, alignItems: 'center', flexWrap: 'wrap' }}>
+            {/* Target sign */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+              <RefImage lang={lang} symbol={practice.tokens[practice.idx].ch} size={130} />
+              <div style={{ width: 130, height: 4, background: 'var(--border)', borderRadius: 9999, overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%', width: `${Math.round(practiceProgress * 100)}%`,
+                  background: practiceProgress >= 1 ? 'var(--success)' : 'var(--accent)',
+                  transition: 'width 0.1s linear',
+                }} />
+              </div>
+            </div>
+
+            {/* Letters */}
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+                {practice.tokens.map((t, i) => {
+                  const doneTok = i < practice.idx && t.type === 'letter';
+                  const current = i === practice.idx;
+                  if (t.type === 'space') return <span key={i} style={{ width: 14 }} />;
+                  return (
+                    <span key={i} style={{
+                      minWidth: 34, height: 40, padding: '0 8px',
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      borderRadius: 8, fontSize: '1.05rem', fontWeight: 600,
+                      border: '1px solid',
+                      borderColor: current ? 'var(--accent)' : doneTok ? 'var(--success)' : 'var(--border)',
+                      background: current ? 'var(--accent-soft)' : doneTok ? 'var(--success-soft)' : 'transparent',
+                      color: t.type === 'skip' ? 'var(--text-3)' : doneTok ? 'var(--success)' : current ? 'var(--text)' : 'var(--text-2)',
+                      textDecoration: t.type === 'skip' ? 'line-through' : 'none',
+                    }}>{t.ch}</span>
+                  );
+                })}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-2)' }}>
+                  Sign <strong style={{ color: 'var(--text)' }}>{practice.tokens[practice.idx].ch}</strong> and hold
+                  {view.prediction === practice.tokens[practice.idx].ch ? ' — keep holding…' : ''}
+                </span>
+                <button onClick={advancePractice} className="btn btn-ghost" style={{ fontSize: '0.8rem', minHeight: 36 }}>
+                  <SkipForward size={13} /> Skip letter
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+        </div>
+
+        {/* ── RIGHT: Detection + Sentence ── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          {/* Detected sign */}
+          <div className="card" style={{ padding: 20 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <span style={{ fontSize: '0.62rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)' }}>
-                Detected Sign
+              <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-2)' }}>
+                Detected sign · {langInfo.name}
               </span>
-              <button onClick={() => setVoiceOn(v => !v)} style={{
-                width: 30, height: 30, borderRadius: 8, border: 'none', cursor: 'pointer',
-                background: voiceOn ? 'rgba(124,58,237,0.2)' : 'rgba(255,255,255,0.05)',
-                color: voiceOn ? '#a78bfa' : 'rgba(255,255,255,0.3)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                {voiceOn ? <Volume2 size={13} /> : <VolumeX size={13} />}
+              <button onClick={() => setVoiceOn(v => !v)} title="Speak each word automatically"
+                aria-label="Toggle auto-speak" style={{
+                  width: 36, height: 36, borderRadius: 8, cursor: 'pointer',
+                  border: '1px solid var(--border)',
+                  background: voiceOn ? 'var(--accent-soft)' : 'var(--surface)',
+                  color: voiceOn ? 'var(--accent)' : 'var(--text-3)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                {voiceOn ? <Volume2 size={15} /> : <VolumeX size={15} />}
               </button>
             </div>
 
             <div style={{
               position: 'relative', display: 'flex', flexDirection: 'column',
               alignItems: 'center', justifyContent: 'center',
-              minHeight: 150, background: 'rgba(0,0,0,0.35)', borderRadius: 12, padding: 16,
+              minHeight: 148,
             }}>
-              <HoldRing progress={ss.hold_progress} />
+              <HoldRing progress={practicing ? practiceProgress : ss.holdProgress} />
               {prediction ? (
                 <div style={{ zIndex: 1, textAlign: 'center' }}>
                   <span style={{
-                    fontFamily: "'Bebas Neue', sans-serif", fontSize: '5.5rem', lineHeight: 1, display: 'block',
-                    filter: 'drop-shadow(0 0 24px rgba(124,58,237,0.7))',
+                    fontSize: '3.4rem', fontWeight: 700, lineHeight: 1, display: 'block',
+                    color: (practicing ? practiceProgress >= 1 : ss.holdProgress >= 1) ? 'var(--success)' : 'var(--text)',
                   }}>{prediction}</span>
-                  <div style={{ width: 90, height: 3, background: 'rgba(255,255,255,0.07)', borderRadius: 9999, margin: '8px auto 4px', overflow: 'hidden' }}>
-                    <div style={{
-                      height: '100%',
-                      background: pct > 85 ? '#34d399' : pct > 65 ? '#fbbf24' : '#f87171',
-                      width: `${pct}%`, transition: 'width 0.2s', borderRadius: 9999,
-                    }} />
-                  </div>
-                  <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.3)' }}>{pct}%</span>
-                  {ss.hold_progress > 0 && (
-                    <span style={{ display: 'block', fontSize: '0.68rem', marginTop: 4, color: ss.hold_progress >= 1 ? '#34d399' : '#a78bfa' }}>
-                      {ss.hold_progress >= 1 ? '✓ Registered!' : `Holding ${Math.round(ss.hold_progress * 100)}%`}
-                    </span>
-                  )}
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-3)', fontVariantNumeric: 'tabular-nums' }}>
+                    {pct}%
+                  </span>
                 </div>
               ) : (
-                <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.2)', zIndex: 1 }}>Sign something…</span>
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-3)', zIndex: 1 }}>
+                  {handsDetected ? 'Reading…' : langInfo.numHands === 2 ? 'Show your hands' : 'Show a sign'}
+                </span>
               )}
             </div>
           </div>
 
-          {/* Sentence builder */}
-          <div style={{ ...glass, padding: 18 }}>
-            <span style={{ fontSize: '0.62rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', display: 'block', marginBottom: 10 }}>
-              Sentence Builder
-            </span>
+          {/* Sentence (hidden during practice) */}
+          {!practicing && (
+            <div className="card" style={{ padding: 20 }}>
+              <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 12 }}>
+                Sentence
+              </span>
 
-            {ss.current_word && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, marginBottom: 8 }}>
-                <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.28)' }}>Spelling:</span>
-                {ss.current_word.split('').map((ch, i) => (
-                  <span key={i} style={{ padding: '1px 5px', borderRadius: 4, background: 'rgba(124,58,237,0.2)', color: '#c4b5fd', fontFamily: 'monospace', fontWeight: 'bold', fontSize: '0.8rem' }}>{ch}</span>
+              <div style={{
+                minHeight: 72, background: 'var(--bg)', borderRadius: 8, padding: 12, marginBottom: 12,
+                border: '1px solid var(--border)',
+                fontSize: '1rem', lineHeight: 1.6,
+              }}>
+                {ss.words.length > 0 || ss.currentWord ? (
+                  <p style={{ margin: 0 }}>
+                    {ss.words.join(' ')}{ss.words.length > 0 && ss.currentWord ? ' ' : ''}
+                    {ss.currentWord && (
+                      <span style={{ color: 'var(--accent)', borderBottom: '2px dotted var(--accent)' }}>
+                        {ss.currentWord}
+                      </span>
+                    )}
+                  </p>
+                ) : (
+                  <span style={{ fontSize: '0.85rem', color: 'var(--text-3)' }}>
+                    Letters you sign will appear here.
+                  </span>
+                )}
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 }}>
+                {[
+                  { label: 'Delete', icon: <Delete size={14} />, fn: backspace },
+                  { label: 'Space', icon: <Space size={14} />, fn: space },
+                  { label: speaking ? '…' : 'Speak', icon: <Volume2 size={14} />, fn: speakSentence, primary: true },
+                  { label: 'Clear', icon: <Trash2 size={14} />, fn: clear },
+                ].map(({ label, icon, fn, primary }) => (
+                  <button key={label} onClick={fn} title={label} className={primary ? 'btn btn-primary' : 'btn btn-secondary'}
+                    style={{ padding: 0, fontSize: '0.78rem', gap: 5 }}>
+                    {icon}{label}
+                  </button>
                 ))}
               </div>
-            )}
-
-            {/* Text area */}
-            <div style={{
-              minHeight: 68, background: 'rgba(0,0,0,0.3)', borderRadius: 10, padding: 12, marginBottom: 12,
-              border: flash ? '1px solid rgba(124,58,237,0.45)' : '1px solid rgba(255,255,255,0.04)',
-              transition: 'border-color 0.15s',
-            }}>
-              {ss.words.length > 0 || ss.current_word ? (
-                <p style={{ fontSize: '0.95rem', lineHeight: 1.6, fontFamily: "'Space Grotesk', sans-serif", margin: 0 }}>
-                  {ss.words.map((w, i) => <span key={i}>{w} </span>)}
-                  {ss.current_word && <span style={{ color: '#c4b5fd', textDecoration: 'underline', textDecorationStyle: 'dashed' }}>{ss.current_word}</span>}
-                </p>
-              ) : (
-                <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.2)' }}>Your sentence will appear here…</span>
-              )}
             </div>
-
-            {/* Action buttons */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 7 }}>
-              {[
-                { label: 'Del',   icon: <Delete size={12} />,   fn: backspace, accent: null },
-                { label: 'Space', icon: null,                   fn: space,     accent: null },
-                { label: speaking ? 'Speaking…' : 'Speak', icon: <Volume2 size={12} />, fn: speak, accent: speaking ? '#34d399' : '#7c3aed' },
-                { label: '',      icon: <Trash2 size={12} />,   fn: clear,     accent: null },
-              ].map(({ label, icon, fn, accent }, i) => (
-                <button key={i} onClick={fn} style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
-                  padding: '9px 4px', borderRadius: 9, cursor: 'pointer', fontSize: '0.7rem',
-                  background: accent ? `rgba(${accent === '#7c3aed' ? '124,58,237' : '52,211,153'},0.18)` : 'rgba(255,255,255,0.05)',
-                  border: `1px solid ${accent ? (accent === '#7c3aed' ? 'rgba(124,58,237,0.4)' : 'rgba(52,211,153,0.4)') : 'rgba(255,255,255,0.07)'}`,
-                  color: accent ? (accent === '#7c3aed' ? '#a78bfa' : '#34d399') : 'rgba(255,255,255,0.55)',
-                  transition: 'all 0.15s',
-                }}>{icon}{label}</button>
-              ))}
-            </div>
-          </div>
+          )}
 
           {/* Tips */}
-          <div style={{ ...glass, padding: 13, fontSize: '0.7rem', color: 'rgba(255,255,255,0.32)', lineHeight: 1.7 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5, fontSize: '0.6rem', letterSpacing: '0.16em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.2)' }}>
-              <Info size={10} /> Tips
-            </div>
-            Hold sign <span style={{ color: 'rgba(255,255,255,0.6)' }}>1.5s</span> to register · Pause <span style={{ color: 'rgba(255,255,255,0.6)' }}>2s</span> for word break · Train SPACE/DEL for hands-free use
-          </div>
+          {!practicing && (
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-3)', lineHeight: 1.7, padding: '0 4px' }}>
+              {lang === 'asl' && 'One-handed alphabet. J and Z involve motion — hold their final pose.'}
+              {lang === 'bsl' && 'Mostly two-handed — keep both hands in frame. H, J and Y involve motion and aren\'t recognised yet.'}
+              {lang === 'isl' && 'Mostly two-handed — keep both hands in frame. H, J and V aren\'t in the training data yet.'}
+            </p>
+          )}
         </div>
       </div>
     </div>
