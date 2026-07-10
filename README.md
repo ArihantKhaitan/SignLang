@@ -2,7 +2,7 @@
 
 Real-time fingerspelling recognition for **ASL, BSL and ISL** that runs **entirely in your browser** — no Python backend, no server, no GPU required. Hand tracking via MediaPipe (WebAssembly), classification via custom-trained neural networks evaluated in plain JavaScript.
 
-**Built by [Arihant Khaitan](https://github.com/ArihantKhaitan) with [Claude](https://claude.ai)**
+**Built by [Arihant Khaitan](https://github.com/ArihantKhaitan)**
 
 ---
 
@@ -108,9 +108,3 @@ Open **http://localhost:3010**, allow camera access, and sign.
 ## Retraining the model (optional)
 
 The model was trained on the [Marxulia ASL alphabets dataset](https://huggingface.co/datasets/Marxulia/asl_sign_languages_alphabets_v03) (10.8k images, 26 classes). To retrain: extract landmarks with MediaPipe's `HandLandmarker`, normalize (wrist-centered, scaled by max landmark distance), augment (mirror + ±12° rotation + noise), train an MLP, and export `coefs_`/`intercepts_` to `frontend/src/model/aslModel.json`.
-
----
-
-## License
-
-MIT
